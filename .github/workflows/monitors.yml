@@ -86,35 +86,75 @@ jobs:
           SCRIPT_BASE64: ${{ steps.setup.outputs.script_base64 }}
           LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
         run: |
-          # 1. Define the GraphQL Mutation Payload using JQ
-          MUTATION_PAYLOAD=$(jq -n \
-            --arg guid "$GUID" \
-            --arg accountId "$ACCOUNT_ID" \
-            --arg status "$STATUS" \
-            --arg name "$NAME" \
-            --arg period "$PERIOD" \
-            --arg script_base64 "$SCRIPT_BASE64" \
-            --argjson locations "$LOCATIONS_JSON" \
-            '{
-              query: "mutation UpsertSyntheticMonitor($accountId: Int!, $monitorInput: SyntheticsCreateScriptApiMonitorInput!) {\n  syntheticsCreateScriptApiMonitor(\n    accountId: $accountId\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
-              variables: {
-                accountId: ($accountId | tonumber),
-                monitorInput: {
-                  # CRUCIAL: Only include the GUID if it is not an empty string (the upsert logic)
-                  guid: ($guid | select(length > 0)),
-                  status: $status,
-                  name: $name,
-                  period: $period,
-                  script: $script_base64,
-                  locations: {
-                    public: $locations
+          # Variable to hold the JSON payload
+          MUTATION_PAYLOAD=""
+          
+          # Paths to extract data/errors from the final response
+          MUTATION_RESULT_PATH=""
+          MONITOR_ERRORS_PATH=""
+
+          if [ -z "$GUID" ]; then
+              # --- CREATE PATH: GUID is empty, use the CREATE mutation (no GUID in input) ---
+              echo "Preparing CREATE mutation for monitor: $NAME"
+              MUTATION_RESULT_PATH=".data.syntheticsCreateScriptApiMonitor"
+              MONITOR_ERRORS_PATH=".data.syntheticsCreateScriptApiMonitor.errors"
+              
+              MUTATION_PAYLOAD=$(jq -n \
+                --arg accountId "$ACCOUNT_ID" \
+                --arg status "$STATUS" \
+                --arg name "$NAME" \
+                --arg period "$PERIOD" \
+                --arg script_base64 "$SCRIPT_BASE64" \
+                --argjson locations "$LOCATIONS_JSON" \
+                '{
+                  query: "mutation CreateSyntheticMonitor($accountId: Int!, $monitorInput: SyntheticsCreateScriptApiMonitorInput!) {\n  syntheticsCreateScriptApiMonitor(\n    accountId: $accountId\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
+                  variables: {
+                    accountId: ($accountId | tonumber),
+                    monitorInput: {
+                      status: $status,
+                      name: $name,
+                      period: $period,
+                      script: $script_base64,
+                      locations: {
+                        public: $locations
+                      }
+                    }
                   }
-                }
-              }
-            }')
+                }')
+          else
+              # --- UPDATE PATH: GUID is present, use the UPDATE mutation (GUID as separate argument) ---
+              echo "Preparing UPDATE mutation for monitor: $NAME (GUID: $GUID)"
+              MUTATION_RESULT_PATH=".data.syntheticsUpdateScriptApiMonitor"
+              MONITOR_ERRORS_PATH=".data.syntheticsUpdateScriptApiMonitor.errors"
+
+              MUTATION_PAYLOAD=$(jq -n \
+                --arg guid "$GUID" \
+                --arg accountId "$ACCOUNT_ID" \
+                --arg status "$STATUS" \
+                --arg name "$NAME" \
+                --arg period "$PERIOD" \
+                --arg script_base64 "$SCRIPT_BASE64" \
+                --argjson locations "$LOCATIONS_JSON" \
+                '{
+                  query: "mutation UpdateSyntheticMonitor($accountId: Int!, $guid: ID!, $monitorInput: SyntheticsUpdateScriptApiMonitorInput!) {\n  syntheticsUpdateScriptApiMonitor(\n    accountId: $accountId\n    guid: $guid\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
+                  variables: {
+                    accountId: ($accountId | tonumber),
+                    guid: $guid,
+                    monitorInput: {
+                      status: $status,
+                      name: $name,
+                      period: $period,
+                      script: $script_base64,
+                      locations: {
+                        public: $locations
+                      }
+                    }
+                  }
+                }')
+          fi
 
           # 2. Execute the Mutation via curl
-          echo "Sending payload for monitor: $NAME (GUID: $GUID)..."
+          echo "Executing GraphQL mutation..."
           RESPONSE=$(curl -s -X POST 'https://api.newrelic.com/graphql' \
             -H "Content-Type: application/json" \
             -H "Api-Key: $NEW_RELIC_API_KEY" \
@@ -122,8 +162,8 @@ jobs:
 
           # 3. Process the Response - Check for global errors first
           GLOBAL_ERRORS=$(echo "$RESPONSE" | jq -r '.errors')
-          MUTATION_ERRORS=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.errors')
-          NEW_GUID=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.monitor.guid')
+          MUTATION_ERRORS=$(echo "$RESPONSE" | jq -r "$MONITOR_ERRORS_PATH")
+          NEW_GUID=$(echo "$RESPONSE" | jq -r "$MUTATION_RESULT_PATH.monitor.guid")
           
           # Check for root-level GraphQL errors (often permission/auth issues)
           if [ "$GLOBAL_ERRORS" != "null" ]; then
