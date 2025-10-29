@@ -16,7 +16,7 @@ jobs:
   read_config:
     runs-on: ubuntu-latest
     outputs:
-      # Expose the content of monitors.json as a job output
+      # Expose the content of monitor_details.json as a job output
       config: ${{ steps.read_config_step.outputs.config }}
 
     steps:
@@ -25,8 +25,9 @@ jobs:
 
       - name: 💾 Read Monitor Configuration File
         id: read_config_step
-        # Read the file and output its content as a JSON string
-        run: echo "config=$(cat monitor_details.json)" >> $GITHUB_OUTPUT
+        # FIX: Use 'jq -c .' to ensure the JSON content is a single, compact line
+        # This prevents the 'Invalid format {' error when writing to $GITHUB_OUTPUT.
+        run: echo "config=$(jq -c '.' monitor_details.json)" >> $GITHUB_OUTPUT
 
   # --- JOB 2: Iterate and perform the upsert operation ---
   upsert_monitors:
@@ -132,7 +133,7 @@ jobs:
 
           if [ -z "$GUID" ]; then
               echo "✅ Monitor CREATED successfully. New GUID: $NEW_GUID"
-              echo "⚠️ IMPORTANT: Update 'monitors.json' with this new GUID for future updates."
+              echo "⚠️ IMPORTANT: Update 'monitor_details.json' with this new GUID for future updates."
           else
               echo "✅ Monitor UPDATED successfully."
           fi
