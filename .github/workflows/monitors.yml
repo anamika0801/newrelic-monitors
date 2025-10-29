@@ -25,8 +25,7 @@ jobs:
 
       - name: 💾 Read Monitor Configuration File
         id: read_config_step
-        # FIX: Use 'jq -c .' to ensure the JSON content is a single, compact line
-        # This prevents the 'Invalid format {' error when writing to $GITHUB_OUTPUT.
+        # Use 'jq -c .' to ensure the JSON content is a single, compact line
         run: echo "config=$(jq -c '.' monitor_details.json)" >> $GITHUB_OUTPUT
 
   # --- JOB 2: Iterate and perform the upsert operation ---
@@ -94,7 +93,7 @@ jobs:
           MONITOR_ERRORS_PATH=""
 
           if [ -z "$GUID" ]; then
-              # --- CREATE PATH: GUID is empty, use the CREATE mutation (no GUID in input) ---
+              # --- CREATE PATH: GUID is empty, use the CREATE mutation ---
               echo "Preparing CREATE mutation for monitor: $NAME"
               MUTATION_RESULT_PATH=".data.syntheticsCreateScriptApiMonitor"
               MONITOR_ERRORS_PATH=".data.syntheticsCreateScriptApiMonitor.errors"
@@ -122,23 +121,22 @@ jobs:
                   }
                 }')
           else
-              # --- UPDATE PATH: GUID is present, use the UPDATE mutation (GUID as separate argument) ---
+              # --- UPDATE PATH: GUID is present, use the UPDATE mutation ---
               echo "Preparing UPDATE mutation for monitor: $NAME (GUID: $GUID)"
               MUTATION_RESULT_PATH=".data.syntheticsUpdateScriptApiMonitor"
               MONITOR_ERRORS_PATH=".data.syntheticsUpdateScriptApiMonitor.errors"
 
               MUTATION_PAYLOAD=$(jq -n \
                 --arg guid "$GUID" \
-                --arg accountId "$ACCOUNT_ID" \
                 --arg status "$STATUS" \
                 --arg name "$NAME" \
                 --arg period "$PERIOD" \
                 --arg script_base64 "$SCRIPT_BASE64" \
                 --argjson locations "$LOCATIONS_JSON" \
                 '{
+                  # NOTE: Update mutation does not take $accountId, and $guid requires EntityGuid! type
                   query: "mutation UpdateSyntheticMonitor($guid: EntityGuid!, $monitorInput: SyntheticsUpdateScriptApiMonitorInput!) {\n  syntheticsUpdateScriptApiMonitor(\n    guid: $guid\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
                   variables: {
-                    # Removed accountId from here and the query definition
                     guid: $guid,
                     monitorInput: {
                       status: $status,
@@ -162,7 +160,8 @@ jobs:
 
           # 3. Process the Response - Check for global errors first
           GLOBAL_ERRORS=$(echo "$RESPONSE" | jq -r '.errors')
-          MUTATION_ERRORS=$(echo "$RESPONSE" | jq -r "$MONITOR_ERRORS_PATH")
+          # Check the length of the error array for mutation-specific errors
+          ERROR_COUNT=$(echo "$RESPONSE" | jq -r "$MONITOR_ERRORS_PATH | length")
           NEW_GUID=$(echo "$RESPONSE" | jq -r "$MUTATION_RESULT_PATH.monitor.guid")
           
           # Check for root-level GraphQL errors (often permission/auth issues)
@@ -173,11 +172,12 @@ jobs:
               exit 1
           fi
 
-          # Check for mutation-specific errors
-          if [ "$MUTATION_ERRORS" != "null" ]; then
+          # Check for mutation-specific errors (if the count > 0)
+          if [ "$ERROR_COUNT" -gt 0 ]; then
               echo "::error::Upsert failed for monitor $NAME."
               echo "Mutation Error Details:"
-              echo "$MUTATION_ERRORS" | jq '.'
+              # Print the actual error details from the response
+              echo "$RESPONSE" | jq -r "$MONITOR_ERRORS_PATH"
               exit 1
           fi
 
