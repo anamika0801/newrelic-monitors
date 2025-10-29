@@ -2,7 +2,7 @@
 {
 "guid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfGUyNDU3NTQ2LTNiMDMtNDRlMi1hMjBhLWNkYjhkYzk0OWYwNw",
 "accountId": "7273540",
-"monitorName": "sli.tracking.new_relic",
+"monitorName": "monitors.new_relic",
 "scriptPath": "monitors/api-check.js",
 "monitorStatus": "ENABLED",
 "monitorPeriod": "EVERY_15_MINUTES",
