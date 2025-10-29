@@ -8,7 +8,7 @@ on:
     branches:
       - main
     paths:
-      - 'monitors.json'
+      - 'monitors/monitor_details.json'
       - 'monitors/**.js'
 
 jobs:
@@ -26,7 +26,7 @@ jobs:
       - name: 💾 Read Monitor Configuration File
         id: read_config_step
         # Read the file and output its content as a JSON string
-        run: echo "config=$(cat monitors.json)" >> $GITHUB_OUTPUT
+        run: echo "config=$(cat monitors/monitor_details.json)" >> $GITHUB_OUTPUT
 
   # --- JOB 2: Iterate and perform the upsert operation ---
   upsert_monitors:
