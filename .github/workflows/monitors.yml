@@ -1,0 +1,124 @@
+name: 🚀 Upsert New Relic Synthetics Monitors
+
+on:
+  workflow_dispatch:
+  
+  push:
+    branches:
+      - main
+    paths:
+      - 'monitors.json'
+      - 'monitors/**.js'
+
+jobs:
+  upsert_monitors:
+    runs-on: ubuntu-latest
+
+    # Load the monitor configurations from monitors.json
+    strategy:
+      fail-fast: false
+      matrix:
+        monitor: ${{ fromJson(toJSON(steps.read_config.outputs.config)) }}
+
+    steps:
+      - name: ⬇️ Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: 💾 Read Monitor Configuration
+        id: read_config
+        
+        run: echo "config=$(cat monitors.json)" >> $GITHUB_OUTPUT
+
+      - name: ⚙️ Setup Environment and Encode Script
+        id: setup
+
+        run: |
+          # Parse config variables from the matrix item
+          CONFIG='${{ toJson(matrix.monitor) }}'
+          MONITOR_GUID=$(echo "$CONFIG" | jq -r '.guid')
+          ACCOUNT_ID=$(echo "$CONFIG" | jq -r '.accountId')
+          NEW_STATUS=$(echo "$CONFIG" | jq -r '.monitorStatus')
+          NEW_NAME=$(echo "$CONFIG" | jq -r '.monitorName')
+          NEW_PERIOD=$(echo "$CONFIG" | jq -r '.monitorPeriod')
+          SCRIPT_PATH=$(echo "$CONFIG" | jq -r '.scriptPath')
+          
+          # Extract the locations array as a raw JSON string for insertion into the mutation
+          MONITOR_LOCATIONS_JSON=$(echo "$CONFIG" | jq -c '.monitorLocations') 
+          
+          # Read the script file and Base64 encode it (required by the New Relic API)
+          MONITOR_SCRIPT_BASE64=$(cat "$SCRIPT_PATH" | base64 -w 0)
+          
+          # Expose all variables for the next step
+          echo "monitor_guid=$MONITOR_GUID" >> $GITHUB_OUTPUT
+          echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
+          echo "new_status=$NEW_STATUS" >> $GITHUB_OUTPUT
+          echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
+          echo "new_period=$NEW_PERIOD" >> $GITHUB_OUTPUT
+          echo "script_base64=$MONITOR_SCRIPT_BASE64" >> $GITHUB_OUTPUT
+          echo "locations_json=$MONITOR_LOCATIONS_JSON" >> $GITHUB_OUTPUT
+
+      - name: 🚀 Execute New Relic Upsert Mutation
+        env:
+          
+          NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
+          GUID: ${{ steps.setup.outputs.monitor_guid }}
+          ACCOUNT_ID: ${{ steps.setup.outputs.account_id }}
+          STATUS: ${{ steps.setup.outputs.new_status }}
+          NAME: ${{ steps.setup.outputs.new_name }}
+          PERIOD: ${{ steps.setup.outputs.new_period }}
+          SCRIPT_BASE64: ${{ steps.setup.outputs.script_base64 }}
+          LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
+        run: |
+          # 1. Define the GraphQL Mutation Payload using JQ
+          # Note: The 'guid' field uses select(length > 0) to omit it if it's empty ("")
+          # This is the mechanism that triggers a CREATE instead of an UPDATE (the upsert logic)
+          MUTATION_PAYLOAD=$(jq -n \
+            --arg guid "$GUID" \
+            --arg accountId "$ACCOUNT_ID" \
+            --arg status "$STATUS" \
+            --arg name "$NAME" \
+            --arg period "$PERIOD" \
+            --arg script_base64 "$SCRIPT_BASE64" \
+            --argjson locations "$LOCATIONS_JSON" \
+            '{
+              query: "mutation UpsertSyntheticMonitor($accountId: Int!, $monitorInput: SyntheticsCreateScriptApiMonitorInput!) {\n  syntheticsCreateScriptApiMonitor(\n    accountId: $accountId\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
+              variables: {
+                accountId: ($accountId | tonumber),
+                monitorInput: {
+                  # CRUCIAL: Only include the GUID if it is not an empty string
+                  guid: ($guid | select(length > 0)),
+                  status: $status,
+                  name: $name,
+                  period: $period,
+                  script: $script_base64,
+                  locations: {
+                    public: $locations
+                  }
+                }
+              }
+            }')
+
+          # 2. Execute the Mutation via curl
+          echo "Sending payload for monitor: $NAME (GUID: $GUID)..."
+          RESPONSE=$(curl -s -X POST 'https://api.newrelic.com/graphql' \
+            -H "Content-Type: application/json" \
+            -H "Api-Key: $NEW_RELIC_API_KEY" \
+            --data-raw "$MUTATION_PAYLOAD")
+
+          # 3. Process the Response
+          ERRORS=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.errors')
+          NEW_GUID=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.monitor.guid')
+          
+          if [ "$ERRORS" != "null" ]; then
+              echo "::error::Upsert failed for monitor $NAME."
+              echo "Error Details:"
+              echo "$ERRORS" | jq '.'
+              exit 1
+          fi
+
+          if [ -z "$GUID" ]; then
+              echo "✅ Monitor CREATED successfully. New GUID: $NEW_GUID"
+              echo "⚠️ IMPORTANT: Update 'monitors.json' with this new GUID for future updates."
+          else
+              echo "✅ Monitor UPDATED successfully."
+          fi
