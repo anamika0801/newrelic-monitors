@@ -120,14 +120,24 @@ jobs:
             -H "Api-Key: $NEW_RELIC_API_KEY" \
             --data-raw "$MUTATION_PAYLOAD")
 
-          # 3. Process the Response
-          ERRORS=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.errors')
+          # 3. Process the Response - Check for global errors first
+          GLOBAL_ERRORS=$(echo "$RESPONSE" | jq -r '.errors')
+          MUTATION_ERRORS=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.errors')
           NEW_GUID=$(echo "$RESPONSE" | jq -r '.data.syntheticsCreateScriptApiMonitor.monitor.guid')
           
-          if [ "$ERRORS" != "null" ]; then
+          # Check for root-level GraphQL errors (often permission/auth issues)
+          if [ "$GLOBAL_ERRORS" != "null" ]; then
+              echo "::error::Global GraphQL Error for monitor $NAME (Auth/Permission Issue likely)."
+              echo "Global Error Details:"
+              echo "$GLOBAL_ERRORS" | jq '.'
+              exit 1
+          fi
+
+          # Check for mutation-specific errors
+          if [ "$MUTATION_ERRORS" != "null" ]; then
               echo "::error::Upsert failed for monitor $NAME."
-              echo "Error Details:"
-              echo "$ERRORS" | jq '.'
+              echo "Mutation Error Details:"
+              echo "$MUTATION_ERRORS" | jq '.'
               exit 1
           fi
 
