@@ -1,8 +1,9 @@
 name: 🚀 Upsert New Relic Synthetics Monitors
 
 on:
+  # Allows manual trigger via the GitHub Actions UI
   workflow_dispatch:
-  
+  # Trigger on push to the main branch
   push:
     branches:
       - main
@@ -11,27 +12,42 @@ on:
       - 'monitors/**.js'
 
 jobs:
-  upsert_monitors:
+  # --- JOB 1: Read the configuration file ---
+  read_config:
     runs-on: ubuntu-latest
-
-    # Load the monitor configurations from monitors.json
-    strategy:
-      fail-fast: false
-      matrix:
-        monitor: ${{ fromJson(toJSON(steps.read_config.outputs.config)) }}
+    outputs:
+      # Expose the content of monitors.json as a job output
+      config: ${{ steps.read_config_step.outputs.config }}
 
     steps:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
 
-      - name: 💾 Read Monitor Configuration
-        id: read_config
-        
+      - name: 💾 Read Monitor Configuration File
+        id: read_config_step
+        # Read the file and output its content as a JSON string
         run: echo "config=$(cat monitors.json)" >> $GITHUB_OUTPUT
 
+  # --- JOB 2: Iterate and perform the upsert operation ---
+  upsert_monitors:
+    # This job MUST wait for 'read_config' to finish
+    needs: read_config
+    runs-on: ubuntu-latest
+
+    # Use the output from the first job to define the matrix
+    strategy:
+      fail-fast: false
+      matrix:
+        # The configuration is now accessed via 'needs.<job_id>.outputs.<output_name>'
+        monitor: ${{ fromJson(needs.read_config.outputs.config) }}
+
+    steps:
+      - name: ⬇️ Checkout Repository
+        uses: actions/checkout@v4
+        
       - name: ⚙️ Setup Environment and Encode Script
         id: setup
-
+        # Set up variables for the current monitor in the matrix
         run: |
           # Parse config variables from the matrix item
           CONFIG='${{ toJson(matrix.monitor) }}'
@@ -59,7 +75,7 @@ jobs:
 
       - name: 🚀 Execute New Relic Upsert Mutation
         env:
-          
+          # Use the New Relic API Key secret for authentication
           NEW_RELIC_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
           GUID: ${{ steps.setup.outputs.monitor_guid }}
           ACCOUNT_ID: ${{ steps.setup.outputs.account_id }}
@@ -70,8 +86,6 @@ jobs:
           LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
         run: |
           # 1. Define the GraphQL Mutation Payload using JQ
-          # Note: The 'guid' field uses select(length > 0) to omit it if it's empty ("")
-          # This is the mechanism that triggers a CREATE instead of an UPDATE (the upsert logic)
           MUTATION_PAYLOAD=$(jq -n \
             --arg guid "$GUID" \
             --arg accountId "$ACCOUNT_ID" \
@@ -85,7 +99,7 @@ jobs:
               variables: {
                 accountId: ($accountId | tonumber),
                 monitorInput: {
-                  # CRUCIAL: Only include the GUID if it is not an empty string
+                  # CRUCIAL: Only include the GUID if it is not an empty string (the upsert logic)
                   guid: ($guid | select(length > 0)),
                   status: $status,
                   name: $name,
