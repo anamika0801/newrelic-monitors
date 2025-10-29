@@ -62,6 +62,7 @@ jobs:
           MONITOR_LOCATIONS_JSON=$(echo "$CONFIG" | jq -c '.monitorLocations') 
           
           # Read the script file content (NO BASE64 ENCODING)
+          # Note: We read it into a variable first to ensure we can echo it safely using the delimiter below
           MONITOR_SCRIPT_CONTENT=$(cat "$SCRIPT_PATH")
           
           # Expose all variables for the next step
@@ -70,7 +71,12 @@ jobs:
           echo "new_status=$NEW_STATUS" >> $GITHUB_OUTPUT
           echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
           echo "new_period=$NEW_PERIOD" >> $GITHUB_OUTPUT
-          echo "script_content=$MONITOR_SCRIPT_CONTENT" >> $GITHUB_OUTPUT # Renamed variable
+          
+          # --- FIX: Use multi-line output syntax for the script content ---
+          echo "script_content<<EOD" >> $GITHUB_OUTPUT
+          echo "$MONITOR_SCRIPT_CONTENT" >> $GITHUB_OUTPUT
+          echo "EOD" >> $GITHUB_OUTPUT
+
           echo "locations_json=$MONITOR_LOCATIONS_JSON" >> $GITHUB_OUTPUT
 
       - name: 🚀 Execute New Relic Upsert Mutation
