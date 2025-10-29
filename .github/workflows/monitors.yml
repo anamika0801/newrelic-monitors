@@ -45,7 +45,7 @@ jobs:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
         
-      - name: ⚙️ Setup Environment and Encode Script
+      - name: ⚙️ Setup Environment and Get Script Content
         id: setup
         # Set up variables for the current monitor in the matrix
         run: |
@@ -61,8 +61,8 @@ jobs:
           # Extract the locations array as a raw JSON string for insertion into the mutation
           MONITOR_LOCATIONS_JSON=$(echo "$CONFIG" | jq -c '.monitorLocations') 
           
-          # Read the script file and Base64 encode it (required by the New Relic API)
-          MONITOR_SCRIPT_BASE64=$(cat "$SCRIPT_PATH" | base64 -w 0)
+          # Read the script file content (NO BASE64 ENCODING)
+          MONITOR_SCRIPT_CONTENT=$(cat "$SCRIPT_PATH")
           
           # Expose all variables for the next step
           echo "monitor_guid=$MONITOR_GUID" >> $GITHUB_OUTPUT
@@ -70,7 +70,7 @@ jobs:
           echo "new_status=$NEW_STATUS" >> $GITHUB_OUTPUT
           echo "new_name=$NEW_NAME" >> $GITHUB_OUTPUT
           echo "new_period=$NEW_PERIOD" >> $GITHUB_OUTPUT
-          echo "script_base64=$MONITOR_SCRIPT_BASE64" >> $GITHUB_OUTPUT
+          echo "script_content=$MONITOR_SCRIPT_CONTENT" >> $GITHUB_OUTPUT # Renamed variable
           echo "locations_json=$MONITOR_LOCATIONS_JSON" >> $GITHUB_OUTPUT
 
       - name: 🚀 Execute New Relic Upsert Mutation
@@ -82,7 +82,7 @@ jobs:
           STATUS: ${{ steps.setup.outputs.new_status }}
           NAME: ${{ steps.setup.outputs.new_name }}
           PERIOD: ${{ steps.setup.outputs.new_period }}
-          SCRIPT_BASE64: ${{ steps.setup.outputs.script_base64 }}
+          SCRIPT_CONTENT: ${{ steps.setup.outputs.script_content }} # Renamed variable
           LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
         run: |
           # Variable to hold the JSON payload
@@ -103,7 +103,7 @@ jobs:
                 --arg status "$STATUS" \
                 --arg name "$NAME" \
                 --arg period "$PERIOD" \
-                --arg script_base64 "$SCRIPT_BASE64" \
+                --arg script_content "$SCRIPT_CONTENT" \
                 --argjson locations "$LOCATIONS_JSON" \
                 '{
                   query: "mutation CreateSyntheticMonitor($accountId: Int!, $monitorInput: SyntheticsCreateScriptApiMonitorInput!) {\n  syntheticsCreateScriptApiMonitor(\n    accountId: $accountId\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
@@ -113,7 +113,7 @@ jobs:
                       status: $status,
                       name: $name,
                       period: $period,
-                      script: $script_base64,
+                      script: $script_content, # Using raw content
                       locations: {
                         public: $locations
                       }
@@ -131,7 +131,7 @@ jobs:
                 --arg status "$STATUS" \
                 --arg name "$NAME" \
                 --arg period "$PERIOD" \
-                --arg script_base64 "$SCRIPT_BASE64" \
+                --arg script_content "$SCRIPT_CONTENT" \
                 --argjson locations "$LOCATIONS_JSON" \
                 '{
                   # NOTE: Update mutation does not take $accountId, and $guid requires EntityGuid! type
@@ -142,7 +142,7 @@ jobs:
                       status: $status,
                       name: $name,
                       period: $period,
-                      script: $script_base64,
+                      script: $script_content, # Using raw content
                       locations: {
                         public: $locations
                       }
