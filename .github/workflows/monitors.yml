@@ -136,9 +136,9 @@ jobs:
                 --arg script_base64 "$SCRIPT_BASE64" \
                 --argjson locations "$LOCATIONS_JSON" \
                 '{
-                  query: "mutation UpdateSyntheticMonitor($accountId: Int!, $guid: ID!, $monitorInput: SyntheticsUpdateScriptApiMonitorInput!) {\n  syntheticsUpdateScriptApiMonitor(\n    accountId: $accountId\n    guid: $guid\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
+                  query: "mutation UpdateSyntheticMonitor($guid: EntityGuid!, $monitorInput: SyntheticsUpdateScriptApiMonitorInput!) {\n  syntheticsUpdateScriptApiMonitor(\n    guid: $guid\n    monitor: $monitorInput\n  ) {\n    errors {\n      description\n      type\n    }\n    monitor {\n      guid\n      name\n      status\n    }\n  }\n}",
                   variables: {
-                    accountId: ($accountId | tonumber),
+                    # Removed accountId from here and the query definition
                     guid: $guid,
                     monitorInput: {
                       status: $status,
