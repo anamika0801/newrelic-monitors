@@ -12,7 +12,7 @@
 "guid": "",
 "accountId": "7273540",
 "monitorName": "new_relic_monitors",
-"scriptPath": "monitors/api-check1.js",
+"scriptPath": "monitors/api_check1.js",
 "monitorStatus": "DISABLED",
 "monitorPeriod": "EVERY_HOUR",
 "monitorLocations": ["AWS_US_EAST_1"]
