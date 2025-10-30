@@ -4,14 +4,14 @@
 "accountId": "7273540",
 "monitorName": "monitors.new_relic",
 "scriptPath": "monitors/api-check.js",
-"monitorStatus": "ENABLED",
+"monitorStatus": "DISABLED",
 "monitorPeriod": "EVERY_15_MINUTES",
 "monitorLocations": ["AWS_US_EAST_1"]
 },
 {
 "guid": "",
 "accountId": "7273540",
-"monitorName": "new_relic_monitors",
+"monitorName": "new_relic_monitors_api",
 "scriptPath": "monitors/api_check1.js",
 "monitorStatus": "DISABLED",
 "monitorPeriod": "EVERY_HOUR",
