@@ -20,6 +20,7 @@
 {
 "guid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfDlmOTM2MDE5LWE0ZGEtNDlkMy04OTZjLWQyMjM3NDNmOTA0ZA",
 "accountId": "7273540",
-"monitorName": "monitor_to_be_deleted"
+"monitorName": "monitor_to_be_deleted",
+"action": "delete"
 }
 ]
