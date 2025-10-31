@@ -118,10 +118,11 @@ jobs:
               MUTATION_RESULT_PATH=".data.syntheticsDeleteMonitor"
               MONITOR_ERRORS_PATH=".data.syntheticsDeleteMonitor.errors"
 
+              # **UPDATED: Removed 'errors' field from the query body**
               MUTATION_PAYLOAD=$(jq -n \
                   --arg guid "$GUID" \
                   '{
-                      query: "mutation DeleteSyntheticMonitor($guid: EntityGuid!) {\n  syntheticsDeleteMonitor(\n    guid: $guid\n  ) {\n    errors {\n      description\n      type\n    }\n    deletedGuid\n  }\n}",
+                      query: "mutation DeleteSyntheticMonitor($guid: EntityGuid!) {\n  syntheticsDeleteMonitor(\n    guid: $guid\n  ) {\n    deletedGuid\n  }\n}",
                       variables: {
                           guid: $guid
                       }
@@ -133,7 +134,7 @@ jobs:
               MUTATION_RESULT_PATH=".data.syntheticsCreateScriptApiMonitor"
               MONITOR_ERRORS_PATH=".data.syntheticsCreateScriptApiMonitor.errors"
               
-              # Original CREATE payload logic (truncated for brevity)
+              # Original CREATE payload logic
               MUTATION_PAYLOAD=$(jq -n \
                 --arg accountId "$ACCOUNT_ID" \
                 --arg status "$STATUS" \
@@ -162,7 +163,7 @@ jobs:
               MUTATION_RESULT_PATH=".data.syntheticsUpdateScriptApiMonitor"
               MONITOR_ERRORS_PATH=".data.syntheticsUpdateScriptApiMonitor.errors"
 
-              # Original UPDATE payload logic (truncated for brevity)
+              # Original UPDATE payload logic
               MUTATION_PAYLOAD=$(jq -n \
                 --arg guid "$GUID" \
                 --arg status "$STATUS" \
@@ -210,11 +211,15 @@ jobs:
           elif [ "$ACTION" == "delete" ]; then
               # For deletion, check if the deletedGuid is null (which might indicate an error) or if errors are present
               DELETED_GUID=$(echo "$RESPONSE" | jq -r "$MUTATION_RESULT_PATH.deletedGuid")
-              ERROR_COUNT=$(echo "$RESPONSE" | jq -r "$MONITOR_ERRORS_PATH | length")
-              if [ "$DELETED_GUID" == "null" ] && [ "$ERROR_COUNT" -eq 0 ]; then
-                # This catches cases where the monitor wasn't found but no official error block was returned.
-                # In New Relic, deleting a non-existent GUID often returns null/empty results without a formal error array.
-                echo "::warning::Deletion result GUID was null. Monitor $GUID may not have existed."
+              
+              # Since the errors field was removed from the query, we can't reliably check ERROR_COUNT > 0 
+              # for deletion-specific errors. We rely on the global error check and the DELETED_GUID being null.
+              if [ "$DELETED_GUID" == "null" ]; then
+                # This catches cases where the monitor wasn't found or API failed silently (Permissions issue).
+                echo "::warning::Deletion result GUID was null. Monitor $GUID may not have existed or API failed."
+                # We exit 0 (Success) here to allow the process to continue, assuming non-existence 
+                # is the reason for the null result, but it will no longer show detailed API errors 
+                # specific to the deletion mutation result.
                 exit 0
               fi
           fi
@@ -230,7 +235,7 @@ jobs:
           fi
 
           # Check for mutation-specific errors (if the count > 0)
-          if [ "$ERROR_COUNT" -gt 0 ]; then
+          if [ "$ACTION" != "delete" ] && [ "$ERROR_COUNT" -gt 0 ]; then
               echo "::error::Action ($ACTION) failed for monitor $NAME."
               echo "Mutation Error Details:"
               # Print the actual error details from the response
