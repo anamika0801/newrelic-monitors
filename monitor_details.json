@@ -11,16 +11,16 @@
 {
 "guid": "",
 "accountId": "7273540",
-"monitorName": "new_relic_monitors_api",
+"monitorName": "monitor_to_be_deleted",
 "scriptPath": "monitors/api_check1.js",
 "monitorStatus": "DISABLED",
 "monitorPeriod": "EVERY_HOUR",
 "monitorLocations": ["AWS_US_EAST_1"]
 },
 {
-"guid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfDlmOTM2MDE5LWE0ZGEtNDlkMy04OTZjLWQyMjM3NDNmOTA0ZA",
+"guid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfDQ5ZjM0MWM0LWE1NWQtNDUxMi1iZWJjLTExMmU0ZjRmOWExYg",
 "accountId": "7273540",
-"monitorName": "monitor_to_be_deleted",
+"monitorName": "sample_api_monitor",
 "action": "delete"
 }
 ]
