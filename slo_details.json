@@ -6,7 +6,7 @@
     "target": 0.999,
     "timeWindow": "SEVEN_DAYS",
     "entityGuid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfDJmMDMxYmFhLWFhZWQtNDQ3My04N2I3LWJmZmI0NjIyYWEyMw",
-    "sliNrqlExpression": "SELECT count(*) FROM Transaction WHERE httpResponseCode < 500",
+    "sliNrqlExpression": "SELECT count(*) FROM SyntheticCheck WHERE result='SUCCESS",
     "action": "upsert"
   }
 ]
