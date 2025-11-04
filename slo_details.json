@@ -2,21 +2,11 @@
   {
     "guid": null,
     "accountId": "7273540",
-    "sloName": "Checkout Service Availability 99.9%",
+    "sloName": "sample_test_sli",
     "target": 0.999,
     "timeWindow": "SEVEN_DAYS",
-    "entityGuid": "MjI2MjUxMHxOUjF8QVBQTElDQVRJT058MjI0NTcwNzA",
-    "sliNrqlExpression": "SELECT count(*) FROM Transaction WHERE appName = 'Checkout-Service' AND httpResponseCode < 500",
+    "entityGuid": "NzI3MzU0MHxTWU5USHxNT05JVE9SfDJmMDMxYmFhLWFhZWQtNDQ3My04N2I3LWJmZmI0NjIyYWEyMw",
+    "sliNrqlExpression": "SELECT count(*) FROM Transaction WHERE httpResponseCode < 500",
     "action": "upsert"
   },
-  {
-    "guid": "NzI3MzU0MHxTRVJWSUNFfEdVSUR8MjMyMDIyMg",
-    "accountId": "7273540",
-    "sloName": "Legacy API Latency Target",
-    "target": 0.95,
-    "timeWindow": "THIRTY_DAYS",
-    "entityGuid": "MjI2MjUxMHxOUjF8QVBQTElDQVRJT058OTc4MTM5Mj",
-    "sliNrqlExpression": "SELECT count(*) FROM Metric WHERE metricName = 'http.latency' AND value < 100",
-    "action": "upsert"
-  }
 ]
