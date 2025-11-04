@@ -1,22 +1,25 @@
 name: 🚀 Upsert/Delete New Relic Monitors and SLOs
 
 on:
+  # Allows manual trigger via the GitHub Actions UI
   workflow_dispatch:
+  # Trigger on push to the main branch
   push:
     branches:
       - main
     paths:
       - 'monitor_details.json'
-      - 'slo_details.json'  
+      - 'slo_details.json' # New SLO trigger
       - 'monitors/**.js'
 
+# --- COMMON ENVIRONMENT ---
 env:
   NR_ENDPOINT: https://api.newrelic.com/graphql
   NR_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
 
 jobs:
   # ------------------------------------------------------------------
-  # ---  MONITOR CONFIGURATION (UNCHANGED) ---
+  # --- JOBS 1 & 2: MONITOR CONFIGURATION (Existing Logic) ---
   # ------------------------------------------------------------------
 
   read_monitor_config:
@@ -43,8 +46,11 @@ jobs:
     steps:
       - name: ⬇️ Checkout Repository
         uses: actions/checkout@v4
-        
+      
       - name: ⚙️ Setup Monitor Environment and Get Script Content/Action
+        # [Monitor setup logic retained and omitted for brevity, but it is identical to your original 'setup' step]
+        # ... your existing setup logic to export monitor details and script content ...
+        # (The full logic from your request will be included here)
         id: setup
         run: |
           CONFIG='${{ toJson(matrix.monitor) }}'
@@ -54,8 +60,8 @@ jobs:
           NEW_NAME=$(echo "$CONFIG" | jq -r '.monitorName')
           NEW_PERIOD=$(echo "$CONFIG" | jq -r '.monitorPeriod')
           SCRIPT_PATH=$(echo "$CONFIG" | jq -r '.scriptPath')
-          MONITOR_ACTION=$(echo "$CONFIG" | jq -r '.action // "upsert"')  
-          MONITOR_LOCATIONS_JSON=$(echo "$CONFIG" | jq -c '.monitorLocations')  
+          MONITOR_ACTION=$(echo "$CONFIG" | jq -r '.action // "upsert"') 
+          MONITOR_LOCATIONS_JSON=$(echo "$CONFIG" | jq -c '.monitorLocations') 
           
           MONITOR_SCRIPT_CONTENT=""
           if [ "$MONITOR_ACTION" == "upsert" ]; then
@@ -67,6 +73,7 @@ jobs:
             fi
           fi
           
+          # Expose all variables for the next step (Base64 encoding done here)
           echo "monitor_guid=$MONITOR_GUID" >> $GITHUB_OUTPUT
           echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
           echo "new_status=$NEW_STATUS" >> $GITHUB_OUTPUT
@@ -87,6 +94,8 @@ jobs:
           SCRIPT_CONTENT: ${{ steps.setup.outputs.script_content }}
           LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
           ACTION: ${{ steps.setup.outputs.monitor_action }}
+        # [Monitor execution logic retained and omitted for brevity, but it is identical to your original 'execute' step]
+        # (The full logic from your request will be included here)
         run: |
           MUTATION_PAYLOAD=""
           MUTATION_RESULT_PATH=""
@@ -201,9 +210,8 @@ jobs:
               echo "✅ Monitor UPDATED successfully."
           fi
 
----
   # ------------------------------------------------------------------
-  # --- SERVICE LEVEL OBJECTIVE (SLO) CONFIGURATION (MODIFIED) ---
+  # --- JOBS 3 & 4: SERVICE LEVEL OBJECTIVE (SLO) CONFIGURATION (NEW LOGIC) ---
   # ------------------------------------------------------------------
 
   read_slo_config:
@@ -234,10 +242,7 @@ jobs:
           ACCOUNT_ID=$(echo "$CONFIG" | jq -r '.accountId')
           SLO_NAME=$(echo "$CONFIG" | jq -r '.sloName')
           TARGET=$(echo "$CONFIG" | jq -r '.target')
-          # Assuming timeWindow is the unit (e.g., DAY, WEEK, MONTH) for rolling
           TIME_WINDOW=$(echo "$CONFIG" | jq -r '.timeWindow')
-          # Assuming rolling count is provided as 'timeWindowCount'
-          TIME_WINDOW_COUNT=$(echo "$CONFIG" | jq -r '.timeWindowCount // 7')
           ENTITY_GUID=$(echo "$CONFIG" | jq -r '.entityGuid')
           NRQL_EXPRESSION=$(echo "$CONFIG" | jq -r '.sliNrqlExpression')
           SLO_ACTION=$(echo "$CONFIG" | jq -r '.action // "upsert"')
@@ -247,7 +252,6 @@ jobs:
           echo "slo_name=$SLO_NAME" >> $GITHUB_OUTPUT
           echo "target=$TARGET" >> $GITHUB_OUTPUT
           echo "time_window=$TIME_WINDOW" >> $GITHUB_OUTPUT
-          echo "time_window_count=$TIME_WINDOW_COUNT" >> $GITHUB_OUTPUT
           echo "entity_guid=$ENTITY_GUID" >> $GITHUB_OUTPUT
           echo "nrql_expression=$NRQL_EXPRESSION" >> $GITHUB_OUTPUT
           echo "slo_action=$SLO_ACTION" >> $GITHUB_OUTPUT
@@ -255,10 +259,10 @@ jobs:
       - name: 🚀 Execute New Relic SLO Mutation
         env:
           GUID: ${{ steps.setup.outputs.slo_guid }}
+          ACCOUNT_ID: ${{ steps.setup.outputs.account_id }}
           SLO_NAME: ${{ steps.setup.outputs.slo_name }}
           TARGET: ${{ steps.setup.outputs.target }}
           TIME_WINDOW: ${{ steps.setup.outputs.time_window }}
-          TIME_WINDOW_COUNT: ${{ steps.setup.outputs.time_window_count }}
           ENTITY_GUID: ${{ steps.setup.outputs.entity_guid }}
           NRQL_EXPRESSION: ${{ steps.setup.outputs.nrql_expression }}
           ACTION: ${{ steps.setup.outputs.slo_action }}
@@ -284,74 +288,56 @@ jobs:
                   }')
 
           elif [ -z "$GUID" ]; then
-              # --- CREATE PATH (MODIFIED) ---
+              # --- CREATE PATH ---
               echo "Preparing CREATE mutation for SLO: $SLO_NAME"
               MUTATION_RESULT_PATH=".data.serviceLevelCreate"
               
-              # Construct the SLI/Indicator Input object (NRQL type)
-              INDICATOR_INPUT=$(jq -n \
-                  --arg name "$SLO_NAME" \
+              # Construct the SLI Input object (NRQL type)
+              SLI_INPUT=$(jq -n \
                   --arg expression "$NRQL_EXPRESSION" \
                   --arg entityGuid "$ENTITY_GUID" \
-                  '{ name: $name, type: "NRQL", nrql: { query: $expression, entityGuid: $entityGuid } }')
+                  '{ type: "NRQL", nrql: { query: $expression, entityGuid: $entityGuid } }')
 
-              # Construct the Objectives Input object
-              OBJECTIVES_INPUT=$(jq -n \
+              # Construct the main SLO Input object
+              SLO_INPUT=$(jq -n \
                   --arg name "$SLO_NAME" \
-                  --arg target "$TARGET" \
                   --arg timeWindow "$TIME_WINDOW" \
-                  --arg count "$TIME_WINDOW_COUNT" \
-                  '[
-                    {
-                      name: $name, 
-                      target: ($target | tonumber), 
-                      timeWindow: { rolling: { unit: $timeWindow, count: ($count | tonumber) } }
-                    }
-                  ]')
+                  --arg target "$TARGET" \
+                  --argjson indicator "$SLI_INPUT" \
+                  '{ name: $name, target: ($target | tonumber), timeWindow: $timeWindow, indicator: $indicator }')
               
-              # Construct the main mutation payload using top-level arguments
               MUTATION_PAYLOAD=$(jq -n \
-                --arg entityGuid "$ENTITY_GUID" \
-                --argjson indicator "$INDICATOR_INPUT" \
-                --argjson objectives "$OBJECTIVES_INPUT" \
+                --arg accountId "$ACCOUNT_ID" \
+                --argjson sloInput "$SLO_INPUT" \
                 '{
-                  query: "mutation CreateServiceLevel($entityGuid: EntityGuid!, $indicator: ServiceLevelIndicatorCreateInput!, $objectives: [ServiceLevelObjectiveInput!]!) { serviceLevelCreate(entityGuid: $entityGuid, indicator: $indicator, objectives: $objectives) { description guid createdAt createdBy { name } } }",
-                  variables: { entityGuid: $entityGuid, indicator: $indicator, objectives: $objectives }
+                  query: "mutation CreateServiceLevel($accountId: Int!, $sloInput: ServiceLevelCreateInput!) { serviceLevelCreate(accountId: $accountId, serviceLevel: $sloInput) { serviceLevel { guid } } }",
+                  variables: { accountId: ($accountId | tonumber), sloInput: $sloInput }
                 }')
           else
-              # --- UPDATE PATH (MODIFIED) ---
+              # --- UPDATE PATH ---
               echo "Preparing UPDATE mutation for SLO: $SLO_NAME (GUID: $GUID)"
               MUTATION_RESULT_PATH=".data.serviceLevelUpdate"
 
-              # Construct the SLI/Indicator Input object (NRQL type)
-              INDICATOR_INPUT=$(jq -n \
-                  --arg name "$SLO_NAME" \
+              # Construct the SLI Input object (NRQL type)
+              SLI_INPUT=$(jq -n \
                   --arg expression "$NRQL_EXPRESSION" \
                   --arg entityGuid "$ENTITY_GUID" \
-                  '{ name: $SLO_NAME, type: "NRQL", nrql: { query: $expression, entityGuid: $entityGuid } }')
+                  '{ type: "NRQL", nrql: { query: $expression, entityGuid: $entityGuid } }')
 
-              # Construct the Objectives Input object
-              OBJECTIVES_INPUT=$(jq -n \
+              # Construct the main SLO Input object
+              SLO_INPUT=$(jq -n \
                   --arg name "$SLO_NAME" \
-                  --arg target "$TARGET" \
                   --arg timeWindow "$TIME_WINDOW" \
-                  --arg count "$TIME_WINDOW_COUNT" \
-                  '[
-                    {
-                      name: $name, 
-                      target: ($target | tonumber), 
-                      timeWindow: { rolling: { unit: $timeWindow, count: ($count | tonumber) } }
-                    }
-                  ]')
+                  --arg target "$TARGET" \
+                  --argjson indicator "$SLI_INPUT" \
+                  '{ name: $name, target: ($target | tonumber), timeWindow: $timeWindow, indicator: $indicator }')
 
-              # Construct the main mutation payload using top-level arguments
               MUTATION_PAYLOAD=$(jq -n \
                 --arg guid "$GUID" \
-                --argjson indicator "$INDICATOR_INPUT" \
-                --argjson objectives "$OBJECTIVES_INPUT" \
+                --argjson sloInput "$SLO_INPUT" \
                 '{
-                  query: "mutation UpdateServiceLevel($guid: EntityGuid!, $indicator: ServiceLevelIndicatorUpdateInput!, $objectives: [ServiceLevelObjectiveInput!]!) { serviceLevelUpdate(guid: $guid, indicator: $indicator, objectives: $objectives) { description guid } }",
-                  variables: { guid: $guid, indicator: $indicator, objectives: $objectives }
+                  query: "mutation UpdateServiceLevel($guid: EntityGuid!, $sloInput: ServiceLevelUpdateInput!) { serviceLevelUpdate(guid: $guid, serviceLevel: $sloInput) { serviceLevel { guid } } }",
+                  variables: { guid: $guid, sloInput: $sloInput }
                 }')
           fi
 
@@ -364,8 +350,7 @@ jobs:
             --data-raw "$MUTATION_PAYLOAD")
 
           GLOBAL_ERRORS=$(echo "$RESPONSE" | jq -r '.errors')
-          # Fetch the new GUID from the correct path for the modified mutation response
-          NEW_GUID=$(echo "$RESPONSE" | jq -r ".data.serviceLevelCreate.guid // .data.serviceLevelUpdate.guid // \"\"")
+          NEW_GUID=$(echo "$RESPONSE" | jq -r ".data.serviceLevelCreate.serviceLevel.guid // .data.serviceLevelUpdate.serviceLevel.guid // \"\"")
 
           if [ "$GLOBAL_ERRORS" != "null" ]; then
               echo "::error::Global GraphQL Error for SLO $SLO_NAME (Auth/Permission Issue likely)."
