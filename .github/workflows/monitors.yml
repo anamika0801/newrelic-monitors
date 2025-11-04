@@ -1,25 +1,22 @@
 name: 🚀 Upsert/Delete New Relic Monitors and SLOs
 
 on:
-  # Allows manual trigger via the GitHub Actions UI
   workflow_dispatch:
-  # Trigger on push to the main branch
   push:
     branches:
       - main
     paths:
       - 'monitor_details.json'
-      - 'slo_details.json' # New SLO trigger
+      - 'slo_details.json' 
       - 'monitors/**.js'
 
-# --- COMMON ENVIRONMENT ---
 env:
   NR_ENDPOINT: https://api.newrelic.com/graphql
   NR_API_KEY: ${{ secrets.NEW_RELIC_API_KEY }}
 
 jobs:
   # ------------------------------------------------------------------
-  # --- JOBS 1 & 2: MONITOR CONFIGURATION (Existing Logic) ---
+  # ---  MONITOR CONFIGURATION---
   # ------------------------------------------------------------------
 
   read_monitor_config:
@@ -48,9 +45,6 @@ jobs:
         uses: actions/checkout@v4
       
       - name: ⚙️ Setup Monitor Environment and Get Script Content/Action
-        # [Monitor setup logic retained and omitted for brevity, but it is identical to your original 'setup' step]
-        # ... your existing setup logic to export monitor details and script content ...
-        # (The full logic from your request will be included here)
         id: setup
         run: |
           CONFIG='${{ toJson(matrix.monitor) }}'
@@ -73,7 +67,6 @@ jobs:
             fi
           fi
           
-          # Expose all variables for the next step (Base64 encoding done here)
           echo "monitor_guid=$MONITOR_GUID" >> $GITHUB_OUTPUT
           echo "account_id=$ACCOUNT_ID" >> $GITHUB_OUTPUT
           echo "new_status=$NEW_STATUS" >> $GITHUB_OUTPUT
@@ -94,8 +87,6 @@ jobs:
           SCRIPT_CONTENT: ${{ steps.setup.outputs.script_content }}
           LOCATIONS_JSON: ${{ steps.setup.outputs.locations_json }}
           ACTION: ${{ steps.setup.outputs.monitor_action }}
-        # [Monitor execution logic retained and omitted for brevity, but it is identical to your original 'execute' step]
-        # (The full logic from your request will be included here)
         run: |
           MUTATION_PAYLOAD=""
           MUTATION_RESULT_PATH=""
@@ -211,7 +202,7 @@ jobs:
           fi
 
   # ------------------------------------------------------------------
-  # --- JOBS 3 & 4: SERVICE LEVEL OBJECTIVE (SLO) CONFIGURATION (NEW LOGIC) ---
+  # --- SERVICE LEVEL OBJECTIVE (SLO) CONFIGURATION---
   # ------------------------------------------------------------------
 
   read_slo_config:
